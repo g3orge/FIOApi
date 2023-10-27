@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -10,30 +9,15 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/g3orge/FIOApi/internal/db"
 	"github.com/g3orge/FIOApi/internal/transport"
 	"github.com/gorilla/mux"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
 func main() {
-	dsn := "user=postgres password=root dbname=Names port=5432 sslmode=disable"
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	db.Table("names").AutoMigrate(&transport.F{})
-	insertF := &transport.F{Name: "Dmitry", Surname: "Alex"}
-
-	db.Table("names").Create(insertF)
-
-	readF := &transport.F{}
-	db.Table("names").First(&readF, "name = ?", "Dmitry")
-	fmt.Println(readF.Name, readF.Surname)
-
+	db.InitPostgres()
 	r := mux.NewRouter()
-	r.HandleFunc("/get", transport.GetF).Methods("GET")
+	r.HandleFunc("/get{id}", transport.GetF).Methods("GET")
 	r.HandleFunc("/update{id}", transport.UpdateF).Methods("PUT")
 	r.HandleFunc("/delete{id}", transport.DeleteF).Methods("DELETE")
 	r.HandleFunc("/add", transport.AddF).Methods("POST")
