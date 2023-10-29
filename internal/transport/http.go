@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/g3orge/FIOApi/internal/db"
 	"github.com/g3orge/FIOApi/internal/model"
@@ -13,18 +14,40 @@ import (
 )
 
 func GetF(w http.ResponseWriter, r *http.Request) {
-	id := mux.Vars(r)["id"]
-	f, err := db.GetName(id)
-	if err != nil {
-		log.Println(err)
-		b := "didnt find"
-		w.Write([]byte(b))
+	log.Printf("Received request: %s %s\n", r.Method, r.URL.Path)
+
+	queryName := r.URL.Query().Get("name")
+	querySurname := r.URL.Query().Get("surname")
+	if queryName == "" && querySurname == "" {
+		log.Print("queryArgs are empty")
 		return
 	}
 
-	national := "https://api.nationalize.io/?name=" + f.Name
-	gender := "https://api.genderize.io/?name=" + f.Name
-	age := "https://api.agify.io/?name=" + f.Name
+	// f, err := db.GetNames()
+	// if err != nil {
+	// 	log.Println(err)
+	// 	b := "didnt find"
+	// 	w.Write([]byte(b))
+	// 	return
+	// }
+
+	datab := db.GetDB()
+	query := datab.Table("names").Model(&model.OutF{})
+
+	if queryName != "" {
+		query = query.Where("name = ?", queryName)
+	}
+
+	if querySurname != "" {
+		query = query.Where("name = ?", querySurname)
+	}
+
+	filteredF := model.OutF{}
+	query.Find(&filteredF)
+
+	national := "https://api.nationalize.io/?name=" + filteredF.Name
+	gender := "https://api.genderize.io/?name=" + filteredF.Name
+	age := "https://api.agify.io/?name=" + filteredF.Name
 
 	rNat, err := http.Get(national)
 	if err != nil {
@@ -44,7 +67,7 @@ func GetF(w http.ResponseWriter, r *http.Request) {
 	for k, v := range f2.Country {
 		if v.Probability > max {
 			max = v.Probability
-			f.Country = f2.Country[k].Countryid
+			filteredF.Country = f2.Country[k].Countryid
 		}
 	}
 
@@ -58,7 +81,7 @@ func GetF(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 	}
 	json.Unmarshal(body, &f2)
-	f.Age = f2.Age
+	filteredF.Age = f2.Age
 
 	rGend, err := http.Get(gender)
 	if err != nil {
@@ -71,13 +94,16 @@ func GetF(w http.ResponseWriter, r *http.Request) {
 	}
 	json.Unmarshal(body, &f2)
 
-	f.Gender = f2.Gender
-	b, _ := json.Marshal(f)
+	filteredF.Gender = f2.Gender
 
-	w.Write(b)
+	db.GetDB().Table("names").Where("name = ?", filteredF.Name).Save(&filteredF)
+
+	json.NewEncoder(w).Encode(filteredF)
 }
 
 func UpdateF(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Received request: %s %s\n", r.Method, r.URL.Path)
+
 	id := mux.Vars(r)["id"]
 
 	body, err := io.ReadAll(r.Body)
@@ -95,11 +121,15 @@ func UpdateF(w http.ResponseWriter, r *http.Request) {
 }
 
 func DeleteF(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Received request: %s %s\n", r.Method, r.URL.Path)
+
 	id := mux.Vars(r)["id"]
 	db.DeleteName(id)
 }
 
 func AddF(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Received request: %s %s\n", r.Method, r.URL.Path)
+
 	var f model.OutF
 
 	body, err := io.ReadAll(r.Body)
@@ -115,4 +145,48 @@ func AddF(w http.ResponseWriter, r *http.Request) {
 
 	b, _ := json.Marshal(f)
 	w.Write(b)
+}
+
+func GetAll(w http.ResponseWriter, r *http.Request) { //пагинация
+	log.Printf("Received request: %s %s\n", r.Method, r.URL.Path)
+
+	queryVal := r.URL.Query()
+	page := strToInt(queryVal.Get("page"))
+	limit := strToInt(queryVal.Get("limit"))
+
+	f, err := db.GetNames()
+	if err != nil {
+		log.Println(err)
+	}
+
+	if page <= 0 {
+		page = 1
+	}
+
+	if limit <= 0 {
+		limit = len(f)
+	}
+
+	startInd := (page - 1)
+	endInd := startInd + limit
+
+	if startInd >= len(f) {
+		json.NewEncoder(w).Encode(f)
+		return
+	}
+	if endInd > len(f) {
+		endInd = len(f)
+	}
+
+	pageName := f[startInd:endInd]
+
+	json.NewEncoder(w).Encode(pageName)
+}
+
+func strToInt(str string) int {
+	result, err := strconv.Atoi(str)
+	if err != nil {
+		return 0
+	}
+	return result
 }

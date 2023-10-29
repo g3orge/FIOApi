@@ -8,28 +8,28 @@ import (
 	"github.com/g3orge/FIOApi/internal/model"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var db *gorm.DB
 var err error
 
-func InitPostgres() {
-	dsn := "user=postgres password=root dbname=Names port=5432 sslmode=disable"
-	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+func InitPostgres(db_user, db_pass, db_port, db_name, db_ssl string) {
+	dsn := fmt.Sprintf("user=%s password=%s dbname=%s port=%s sslmode=%s", db_user, db_pass, db_name, db_port, db_ssl)
+	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
+	// db.Migrator().DropTable("names")
 
 	db.Table("names").AutoMigrate(&model.OutF{})
+
 	insertF := &[]model.OutF{{Name: "Dmitry", Surname: "Ushakov", Patronymic: "Ivanovich"},
 		{Name: "Alexey", Surname: "Udakov", Patronymic: "Olegovich"},
 		{Name: "Irina", Surname: "Ivanova", Patronymic: "Ivanovna"}}
-
 	db.Table("names").Create(insertF)
-
-	readF := &model.OutF{}
-	db.Table("names").First(&readF, "name = ?", "Irina")
-	fmt.Println(readF.Name, readF.Surname)
 }
 
 func GetName(name string) (*model.OutF, error) {
@@ -40,6 +40,16 @@ func GetName(name string) (*model.OutF, error) {
 	}
 
 	return &f, nil
+}
+
+func GetNames() ([]model.OutF, error) {
+	var f []model.OutF
+	res := db.Table("names").Find(&f)
+	if res.RowsAffected == 0 {
+		return nil, errors.New(fmt.Sprintf("some error"))
+	}
+
+	return f, nil
 }
 
 func AddName(f *model.OutF) {
@@ -54,4 +64,8 @@ func DeleteName(name string) {
 
 func UpdateName(f *model.OutF, id string) {
 	db.Table("names").Where("name = ?", id).Save(&f)
+}
+
+func GetDB() *gorm.DB {
+	return db
 }
